@@ -223,7 +223,7 @@ const num=v=>{if(v===''||v==null)return null;const n=parseFloat(String(v).replac
 const fk=n=>n==null?'–':String(Math.round(n*100)/100).replace('.',',');
 const fv=n=>n==null?'':String(n).replace('.',',');   // valor de un input numérico, con coma decimal
 const clone=o=>JSON.parse(JSON.stringify(o));
-const today=ds(new Date());
+let today=ds(new Date());   // se actualiza al volver a la app si ha cambiado el día (ver syncToday)
 const lsGet=(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}};
 const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
 
@@ -749,6 +749,17 @@ function startLocal(){
   loaded={tpl:true,ses:true,body:true};status('Guardado en el móvil');render();
   try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 }
+/* si la app se quedó abierta de un día para otro, "hoy" pasa a ser el día real al volver a ella */
+function syncToday(){
+  const now=ds(new Date());if(now===today)return;
+  const old=today;today=now;
+  if(ui.day===old){ui.day=today;ui.week=mondayOf(today);ui.confirm=null}
+  if(ui.bDate===old)ui.bDate=today;
+  render();
+}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')syncToday()});
+window.addEventListener('pageshow',syncToday);
+window.addEventListener('focus',syncToday);
 /* guardar al momento si la app se cierra o pasa a segundo plano */
 function flushAll(){Object.keys(timers).forEach(p=>{if(timers[p]){clearTimeout(timers[p]);timers[p]=null}});persistLocal();dirty.clear()}
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushAll()});
