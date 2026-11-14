@@ -107,8 +107,11 @@ h2.sec{font-family:var(--display);font-weight:800;font-size:22px;text-transform:
 .last{font-size:13px;color:var(--muted);background:var(--surface2);border-radius:8px;padding:6px 8px}
 .last b{color:var(--fg);font-weight:600}
 .sets{display:grid;gap:6px}
-.setrow{display:grid;grid-template-columns:30px minmax(0,1fr) minmax(0,1fr) 36px;gap:6px;align-items:center}
-.setrow.rir{grid-template-columns:30px minmax(0,1fr) minmax(0,1fr) minmax(0,.8fr) 36px}
+.setrow{display:grid;grid-template-columns:30px minmax(0,1fr) minmax(0,1fr) 44px;gap:6px;align-items:center}
+.setrow.rir{grid-template-columns:30px minmax(0,1fr) minmax(0,1fr) minmax(0,.8fr) 44px}
+.ok{width:44px;height:44px;padding:0;border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:10px;display:grid;place-items:center}
+.ok svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
+.ok.done{background:var(--up-soft);border-color:var(--up);color:var(--up)}
 .sethead{font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
 .sn{font-family:var(--display);font-weight:800;font-size:18px;color:var(--muted);text-align:center}
 .field{width:100%;min-width:0;height:44px;border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:0 10px;font-size:17px;font-variant-numeric:tabular-nums}
@@ -213,6 +216,7 @@ const slug=s=>String(s).normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().re
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const num=v=>{if(v===''||v==null)return null;const n=parseFloat(String(v).replace(',','.'));return isFinite(n)?n:null};
 const fk=n=>n==null?'–':String(Math.round(n*100)/100).replace('.',',');
+const fv=n=>n==null?'':String(n).replace('.',',');   // valor de un input numérico, con coma decimal
 const clone=o=>JSON.parse(JSON.stringify(o));
 const today=ds(new Date());
 const lsGet=(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}};
@@ -339,7 +343,8 @@ const icons={
   right:'<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>',
   x:'<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',
   up:'<svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg>',
-  down:'<svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>'
+  down:'<svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>',
+  check:'<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>'
 };
 function banner(){
   let h='';
@@ -444,18 +449,21 @@ function itemCard(d,it,i){
   const rows=(it.sets||[]).map((st,j)=>{
     const p=last&&last.sets[j];
     return `<div class="setrow${rir?' rir':''}"><span class="sn num">${j+1}</span>
-      <input class="field" id="s-${d}-${i}-${j}-kg" data-f="set" data-i="${i}" data-j="${j}" data-k="kg" inputmode="decimal" value="${st.kg??''}" placeholder="${p&&p.kg!=null?fk(p.kg):'kg'}" aria-label="Serie ${j+1} kilos">
-      <input class="field" id="s-${d}-${i}-${j}-reps" data-f="set" data-i="${i}" data-j="${j}" data-k="reps" inputmode="numeric" value="${st.reps??''}" placeholder="${p&&p.reps!=null?p.reps:'reps'}" aria-label="Serie ${j+1} repeticiones">
-      ${rir?`<input class="field" id="s-${d}-${i}-${j}-rir" data-f="set" data-i="${i}" data-j="${j}" data-k="rir" inputmode="decimal" value="${st.rir??''}" placeholder="${p&&p.rir!=null?fk(p.rir):'RIR'}" aria-label="Serie ${j+1} RIR">`:''}
-      <button class="del" data-act="delset" data-i="${i}" data-j="${j}" aria-label="Borrar serie ${j+1}">${icons.x}</button></div>`;
+      <input class="field" id="s-${d}-${i}-${j}-kg" data-f="set" data-i="${i}" data-j="${j}" data-k="kg" inputmode="decimal" enterkeyhint="next" value="${fv(st.kg)}" placeholder="${p&&p.kg!=null?fk(p.kg):'kg'}" aria-label="Serie ${j+1} kilos">
+      <input class="field" id="s-${d}-${i}-${j}-reps" data-f="set" data-i="${i}" data-j="${j}" data-k="reps" inputmode="numeric" enterkeyhint="next" value="${st.reps??''}" placeholder="${p&&p.reps!=null?p.reps:'reps'}" aria-label="Serie ${j+1} repeticiones">
+      ${rir?`<input class="field" id="s-${d}-${i}-${j}-rir" data-f="set" data-i="${i}" data-j="${j}" data-k="rir" inputmode="decimal" enterkeyhint="next" value="${fv(st.rir)}" placeholder="${p&&p.rir!=null?fk(p.rir):'RIR'}" aria-label="Serie ${j+1} RIR">`:''}
+      <button class="ok${st.reps!=null?' done':''}" id="ok-${d}-${i}-${j}" data-act="okset" data-i="${i}" data-j="${j}" aria-label="Serie ${j+1}: repetir lo de la última vez">${icons.check}</button></div>`;
   }).join('');
+  const nS=(it.sets||[]).length,popKey=`set:${d}:${i}`;
   const hint=(ev.k==='up'||ev.k==='stall')&&last?`<div class="hint ${ev.k}">${esc(ev.hint)}</div>`:'';
   return `<section class="ex"><div class="exhead"><div class="exname">${esc(it.name)}<small>Objetivo ${esc(target)}</small></div>${ctl}</div>${confirmDel}
     ${last?`<div class="last">Última vez (${fmtShort(last.date)}): <b class="num">${setsTxt(last.sets)}</b></div>`:''}
     ${hint}
     <div class="sets"><div class="setrow${rir?' rir':''} sethead"><span>#</span><span>kg</span><span>reps</span>${rir?'<span>RIR</span>':''}<span></span></div>${rows}</div>
-    <div class="row"><button class="btn sm" data-act="addset" data-i="${i}">+ Serie</button>
-      ${last?`<button class="btn sm ghost" data-act="copylast" data-i="${i}">Usar pesos de la última vez</button>`:''}</div>
+    <div class="row"><button class="btn" data-act="addset" data-i="${i}">+ Serie</button>
+      ${nS>1?`<button class="btn ghost" data-act="popset" data-i="${i}" aria-label="Quitar la última serie">− Serie</button>`:''}
+      ${last?'<span class="small muted">✓ repite la última vez</span>':''}</div>
+    ${ui.confirm===popKey?`<div class="row"><span class="small">¿Borrar la serie ${nS} con lo apuntado?</span><button class="btn sm danger" data-act="popset" data-i="${i}">Borrar</button><button class="btn sm ghost" data-act="cancel">Cancelar</button></div>`:''}
     <input class="field" id="n-${d}-${i}" data-f="inote" data-i="${i}" value="${esc(it.note||'')}" placeholder="Nota (straps, molestias…)" aria-label="Nota del ejercicio">
   </section>`;
 }
@@ -562,6 +570,7 @@ function viewBody(){
   </tbody></table></div>`:'<div class="empty">Apunta tu primer pesaje arriba.</div>'}`;
 }
 
+let restoring=false;   // true mientras render() devuelve el foco (para no seleccionar el texto)
 function render(){
   const a=document.activeElement,id=a&&a.id,ss=a&&a.selectionStart,se=a&&a.selectionEnd;
   const typing=a&&/^(INPUT|TEXTAREA)$/.test(a.tagName)&&a.type!=='checkbox'&&a.type!=='date'?a.value:null;
@@ -569,7 +578,7 @@ function render(){
   document.querySelectorAll('.tab').forEach(b=>b.setAttribute('aria-current',b.dataset.v===ui.tab?'page':'false'));
   if(!done){app.innerHTML='<div class="empty">Cargando tus entrenos…</div>';return}
   app.innerHTML=ui.tab==='progreso'?viewProgress():ui.tab==='rutina'?viewRoutine():ui.tab==='cuerpo'?viewBody():viewCalendar();
-  if(id){const el=document.getElementById(id);if(el){if(typing!=null&&el.value!==typing)el.value=typing;el.focus({preventScroll:true});try{if(ss!=null)el.setSelectionRange(ss,se)}catch(e){}}}
+  if(id){const el=document.getElementById(id);if(el){if(typing!=null&&el.value!==typing)el.value=typing;restoring=true;el.focus({preventScroll:true});restoring=false;try{if(ss!=null)el.setSelectionRange(ss,se)}catch(e){}}}
 }
 
 /* ---------- acciones ---------- */
@@ -578,10 +587,13 @@ function uniqueId(name){
   if(byName)return byName.id;
   let id=slug(name),n=2;while(cat.has(id))id=slug(name)+'-'+(n++);return id;
 }
-function mkItem(e){
+function mkItem(e,date){
   const it={id:e.id,name:e.name,type:e.type||'w',tSets:e.sets??3,rmin:e.rmin??8,rmax:e.rmax??12,note:''};
   if(it.type==='cardio')it.cardio={min:null,incl:null,kmh:null};
-  else it.sets=Array.from({length:Math.max(1,e.sets||3)},()=>({kg:null,reps:null,rir:null}));
+  else{ // los kg salen ya rellenos con los de la última vez; las reps se apuntan al hacer la serie
+    const L=date?lastBefore(e.id,date):null;
+    it.sets=Array.from({length:Math.max(1,e.sets||3)},(_,n)=>{const p=L&&(L.sets[n]||L.sets[L.sets.length-1]);return {kg:p&&p.kg!=null?p.kg:null,reps:null,rir:null}});
+  }
   return it;
 }
 const S=()=>sessions[ui.day];
@@ -589,28 +601,35 @@ const S=()=>sessions[ui.day];
 document.addEventListener('click',ev=>{
   const b=ev.target.closest('[data-act]');if(!b)return;
   const act=b.dataset.act,v=b.dataset.v,i=+b.dataset.i,j=+b.dataset.j,ti=+b.dataset.t,ei=+b.dataset.e;
-  const s=S();
+  const s=S();let focusId=null;
   switch(act){
     case 'tab': ui.tab=v;ui.confirm=null;ui.msg=null;location.hash=v;window.scrollTo(0,0);break;
     case 'week': ui.week=addDays(ui.week,7*+v);ui.day=addDays(ui.day,7*+v);ui.confirm=null;break;
     case 'gotoday': ui.week=mondayOf(today);ui.day=today;break;
     case 'day': ui.day=v;ui.confirm=null;break;
     case 'start':{const t=templates.find(x=>x.id===v);if(!t)return;
-      sessions[ui.day]={date:ui.day,kind:'gym',tplId:t.id,title:t.name,items:t.exercises.map(mkItem),note:''};saveSes(ui.day,true);break}
+      sessions[ui.day]={date:ui.day,kind:'gym',tplId:t.id,title:t.name,items:t.exercises.map(e=>mkItem(e,ui.day)),note:''};saveSes(ui.day,true);break}
     case 'startk': sessions[ui.day]={date:ui.day,kind:v,note:''};saveSes(ui.day,true);break;
     case 'ask': ui.confirm=v;break;
     case 'cancel': ui.confirm=null;break;
     case 'delses': delete sessions[ui.day];ui.confirm=null;saveSes(ui.day,true);break;
     case 'rir': ui.rir=b.checked;lsSet('dh-rir',ui.rir);break;
-    case 'addset':{const it=s.items[i];const lastSet=it.sets[it.sets.length-1];it.sets.push({kg:lastSet?lastSet.kg:null,reps:null,rir:null});saveSes(ui.day);break}
-    case 'delset': s.items[i].sets.splice(j,1);saveSes(ui.day);break;
-    case 'copylast':{const it=s.items[i];const L=lastBefore(it.id,ui.day);if(!L)return;
-      L.sets.forEach((x,k)=>{if(!it.sets[k])it.sets.push({kg:null,reps:null,rir:null});it.sets[k].kg=x.kg});saveSes(ui.day);break}
+    case 'addset':{const it=s.items[i];const lastSet=it.sets[it.sets.length-1];it.sets.push({kg:lastSet?lastSet.kg:null,reps:null,rir:null});ui.confirm=null;
+      focusId=`s-${ui.day}-${i}-${it.sets.length-1}-${lastSet&&lastSet.kg!=null?'reps':'kg'}`;saveSes(ui.day);break}
+    case 'popset':{const it=s.items[i],key=`set:${ui.day}:${i}`,lastSet=it.sets[it.sets.length-1];if(it.sets.length<2)return;
+      if(lastSet.reps!=null&&ui.confirm!==key){ui.confirm=key;break}
+      it.sets.pop();ui.confirm=null;saveSes(ui.day);break}
+    case 'okset':{ // un toque: misma serie que la última vez (o que la serie anterior de hoy)
+      const it=s.items[i],st=it.sets[j];if(st.reps!=null)return;
+      const L=lastBefore(it.id,ui.day),prev=j>0?it.sets[j-1]:null;
+      const src=(L&&L.sets[j])||(prev&&prev.reps!=null?prev:null);
+      if(!src){const el=document.getElementById(`s-${ui.day}-${i}-${j}-${st.kg==null?'kg':'reps'}`);if(el)el.focus();return}
+      if(st.kg==null)st.kg=src.kg;st.reps=src.reps;saveSes(ui.day);break}
     case 'mvitem':{const k=i+(+v);if(k<0||k>=s.items.length)return;[s.items[i],s.items[k]]=[s.items[k],s.items[i]];saveSes(ui.day);break}
     case 'delitem': s.items.splice(i,1);ui.confirm=null;saveSes(ui.day);break;
     case 'additem':{const inp=document.getElementById('addex');const name=(inp.value||'').trim();if(!name){inp.focus();return}
       const cat=catalog();const id=uniqueId(name);const base=cat.get(id)||{id,name,sets:3,rmin:8,rmax:12,type:'w'};
-      s.items.push(mkItem(base));saveSes(ui.day);break}
+      s.items.push(mkItem(base,ui.day));saveSes(ui.day);break}
     case 'ex': ui.ex=v||null;window.scrollTo(0,0);break;
     case 'tadd': templates[ti].exercises.push({id:uniqueId('Nuevo ejercicio '+Date.now().toString(36)),name:'Nuevo ejercicio',type:'w',sets:3,rmin:8,rmax:12});saveTpl();break;
     case 'tdel': templates[ti].exercises.splice(ei,1);saveTpl();break;
@@ -626,13 +645,20 @@ document.addEventListener('click',ev=>{
     default:return;
   }
   render();
+  if(focusId){const el=document.getElementById(focusId);if(el)el.focus()}
 });
 
 document.addEventListener('input',ev=>{
   const el=ev.target,f=el.dataset&&el.dataset.f;if(!f)return;
   const i=+el.dataset.i,j=+el.dataset.j,k=el.dataset.k,ti=+el.dataset.t,ei=+el.dataset.e,s=S();
   switch(f){
-    case 'set': s.items[i].sets[j][k]=num(el.value);saveSes(ui.day);break;
+    case 'set':{const st=s.items[i].sets,old=st[j][k],v=num(el.value);st[j][k]=v;
+      // al cambiar los kg, las series siguientes sin hacer que tenían el mismo peso lo heredan
+      if(k==='kg')for(let n=j+1;n<st.length;n++){
+        if(st[n].reps!=null||(st[n].kg!=null&&st[n].kg!==old))break;
+        st[n].kg=v;const o=document.getElementById(`s-${ui.day}-${i}-${n}-kg`);if(o)o.value=el.value}
+      const ok=document.getElementById(`ok-${ui.day}-${i}-${j}`);if(ok)ok.classList.toggle('done',st[j].reps!=null);
+      saveSes(ui.day);break}
     case 'cardio': s.items[i].cardio[k]=num(el.value);saveSes(ui.day);break;
     case 'inote': s.items[i].note=el.value;saveSes(ui.day);break;
     case 'snote': s.note=el.value;saveSes(ui.day);break;
@@ -645,6 +671,21 @@ document.addEventListener('input',ev=>{
       else e[k]=num(el.value);
       saveTpl();break}
   }
+});
+/* "Siguiente" del teclado: kg → reps → (RIR) → serie siguiente */
+document.addEventListener('keydown',ev=>{
+  const el=ev.target;if(ev.key!=='Enter'||!el.dataset||el.dataset.f!=='set')return;
+  ev.preventDefault();
+  const i=+el.dataset.i,j=+el.dataset.j,k=el.dataset.k,p=`s-${ui.day}-${i}-`;let nx=null;
+  if(k==='kg')nx=p+j+'-reps';
+  else if(k==='reps'&&ui.rir)nx=p+j+'-rir';
+  else{const n=S().items[i].sets[j+1];if(n)nx=p+(j+1)+'-'+(n.kg==null?'kg':'reps')}
+  const t=nx&&document.getElementById(nx);if(t)t.focus();else el.blur();
+});
+/* al tocar un campo ya relleno se selecciona entero: escribir encima lo sustituye */
+document.addEventListener('focusin',ev=>{
+  const el=ev.target;if(restoring||!el.dataset||(el.dataset.f!=='set'&&el.dataset.f!=='cardio')||!el.value)return;
+  setTimeout(()=>{try{if(document.activeElement===el)el.select()}catch(e){}},0);
 });
 document.addEventListener('change',ev=>{
   const el=ev.target,f=el.dataset&&el.dataset.f;
