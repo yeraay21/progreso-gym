@@ -32,10 +32,13 @@ README.md       Cómo actualizar la app
 - **estado**: `templates`, `sessions`, `bodyLog` y el objeto `ui` (pestaña, semana, día seleccionado, ejercicio abierto, confirmaciones pendientes).
 - **guardado**: `save(path, getData)` con debounce (~900 ms) → `flush` → `persistLocal()`. `flushAll()` guarda al instante cuando la app pasa a segundo plano (`visibilitychange`/`pagehide`).
   - Nota: hay restos de una versión anterior que guardaba en una base de datos en la nube (`db`, `mode`, `dirty`, rutas tipo `sessions/<fecha>`). Ahora `mode` siempre es `'local'` y todo acaba en `persistLocal()`. Se puede simplificar, con cuidado de no tocar el formato guardado.
-- **catálogo e historial**: `catalog()` (todos los ejercicios conocidos), `history(id)` (sesiones de gym con ese ejercicio, por fecha), `lastBefore(id, fecha)`, `evaluate(id)` → estado del ejercicio:
+- **catálogo e historial**: `catalog()` (todos los ejercicios conocidos), `history(id)` (sesiones de gym con ese ejercicio, por fecha; **solo cuentan las series con reps**, un kg relleno sin reps no es una serie hecha), `lastBefore(id, fecha)`, `evaluate(id, antesDe)` → estado del ejercicio. Con `antesDe` (lo usa la tarjeta del día) solo mira sesiones anteriores a esa fecha; sin él (Progreso) usa todo el historial salvo la sesión de hoy si está a medias:
   - `up` "Sube peso": en la última sesión llegó a `rmax` en todas las series objetivo con el peso máximo.
-  - `stall` "Estancado": ≥ 14 días con el mismo peso máximo sin mejorar la suma de repeticiones.
+  - `stall` "Estancado": dentro de la racha de sesiones seguidas con el peso actual, la mejor suma de reps se consiguió hace ≥ 14 días y no se ha superado.
   - `prog` "Progresando", `flat` "Igual/Bajó peso/1er registro", `none` "Sin datos".
+- **grupos musculares**: `GROUPS` (orden en Progreso, bíceps y tríceps primero) y `muscle(e)`: usa el campo opcional `muscle` del ejercicio (se elige en Rutina) o, si no existe, lo deduce del nombre.
+- **tarjeta del día**: los kg salen rellenos con los de la última vez (`mkItem(e, fecha)`); el botón ✓ (`okset`) apunta la misma serie que la última vez; al cambiar los kg, las series siguientes sin hacer lo heredan. `goalHtml` pinta el objetivo de hoy, `better` marca la serie que supera a la de la última vez y `cmpHtml` el balance al terminar. Mientras se escribe **no se llama a `render()`**: `refreshItem(i)` actualiza esas marcas tocando el DOM directamente.
+- **cambio de día**: `today` es un `let`; `syncToday()` lo actualiza al volver a la app.
 - **gráfica**: `chart(points, unit)` dibuja un SVG a mano (sin librerías).
 - **vistas**: `viewCalendar` + `viewDay` + `itemCard` (pestaña Calendario), `viewProgress` + `viewExercise` (Progreso), `viewRoutine` (Rutina + copia de seguridad), `viewBody` (Cuerpo). `render()` repinta todo con `innerHTML` y restaura el foco y la posición del cursor del input activo (importante para no cortar lo que el usuario escribe).
 - **acciones**: un único listener de `click` por `data-act` y otro de `input`/`change` por `data-f`. Para añadir un botón nuevo: ponle `data-act="..."` y añade un `case` en el `switch`.
@@ -46,7 +49,8 @@ README.md       Cómo actualizar la app
 ```js
 {
   templates: [               // plantillas de sesión ("Pecho, tríceps y hombro", "Brazo"…)
-    { id, name, exercises: [ { id, name, type: 'w' | 'cardio', sets, rmin, rmax } ] }
+    { id, name, exercises: [ { id, name, type: 'w' | 'cardio', sets, rmin, rmax,
+                               muscle } ] }   // muscle es opcional: clave de GROUPS ('biceps', 'triceps'…)
   ],
   sessions: {                // una por día, clave = 'YYYY-MM-DD'
     '2026-11-14': {

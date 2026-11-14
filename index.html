@@ -158,6 +158,10 @@ textarea.field{height:auto;min-height:44px;padding:10px;font-size:16px;resize:ve
 .stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .stat{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px}
 .stat b{display:block;font-family:var(--display);font-weight:800;font-size:24px;line-height:1.1}
+button.stat{text-align:left;width:100%;min-width:0}
+.stat[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.grp{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:-8px}
+.grp .pri{color:var(--accent)}
 .week{display:flex;flex-direction:column;gap:6px}
 .wk{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
 .wk h3{margin:0;font-size:13px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
@@ -305,16 +309,31 @@ function evaluate(id,before){
   const done=L.atTop.filter(x=>x.reps!=null);
   if(rmax&&done.length>=tSets&&done.every(x=>x.reps>=rmax))
     return {k:'up',label:'Sube peso',hint:`Hiciste ${rmax} reps en todas las series con ${fk(L.top)} kg. Prueba con ${fk(L.top+2.5)} kg (o el siguiente escalón de la máquina).`};
-  let start=h.length-1;
-  for(let k=h.length-2;k>=0;k--){ if(h[k].top===L.top&&h[k].repsSum>=L.repsSum)start=k; else break; }
-  const span=daysBetween(h[start].date,L.date);
-  if(start<h.length-1&&span>=14)
-    return {k:'stall',label:'Estancado',hint:`Llevas ${Math.floor(span/7)} semanas con ${fk(L.top)} kg sin mejorar repeticiones. Sube peso o busca 1 rep más por serie.`};
+  let a=h.length-1;while(a>0&&h[a-1].top===L.top)a--;          // racha de sesiones seguidas con el peso actual
+  let b=a;for(let k=a+1;k<h.length;k++)if(h[k].repsSum>h[b].repsSum)b=k;   // primera sesión con la mejor marca
+  const span=daysBetween(h[b].date,L.date);
+  if(b<h.length-1&&span>=14)
+    return {k:'stall',label:'Estancado',best:h[b].repsSum,hint:`Tu mejor marca con ${fk(L.top)} kg (${h[b].repsSum} reps en total) es de hace ${Math.floor(span/7)} semanas y no la has superado. Busca 1 rep más por serie o sube peso.`};
   if(h.length===1)return {k:'flat',label:'1er registro'};
   const P=h[h.length-2];
   if(L.top>P.top||(L.top===P.top&&L.repsSum>P.repsSum))return {k:'prog',label:'Progresando'};
   if(L.top<P.top)return {k:'flat',label:'Bajó peso'};
   return {k:'flat',label:'Igual'};
+}
+/* grupos musculares, en el orden en que salen en Progreso (el brazo primero: es la prioridad) */
+const GROUPS=[['biceps','Bíceps'],['triceps','Tríceps'],['pecho','Pecho'],['espalda','Espalda'],['hombro','Hombro'],['pierna','Pierna'],['abdomen','Abdomen'],['otros','Otros']];
+/* grupo de un ejercicio: el elegido en Rutina (campo opcional muscle) o, si no, deducido del nombre */
+function muscle(e){
+  if(e.muscle&&GROUPS.some(g=>g[0]===e.muscle))return e.muscle;
+  const s=' '+slug(e.name||'').replace(/-/g,' ')+' ',has=(...w)=>w.some(x=>s.includes(x));
+  if(has('crunch','abdominal','plancha','elevacion de piernas','elevaciones de piernas','rueda abdominal'))return 'abdomen';
+  if(has('femoral','cuadriceps','prensa','sentadilla','zancada','gemelo','abductor','aductor','gluteo','hip thrust','peso muerto','pierna'))return 'pierna';
+  if(has('triceps','fondos','press frances'))return 'triceps';
+  if(has('curl','biceps','martillo','scott','predicador'))return 'biceps';
+  if(has('lateral','hombro','pajaro','militar','face pull','deltoid'))return 'hombro';
+  if(has('jalon','remo','dominada','pull','espalda','dorsal'))return 'espalda';
+  if(has('pecho','press','apertura','contractor','banca','flexion'))return 'pecho';
+  return 'otros';
 }
 const pillCls={up:'p-up',stall:'p-stall',prog:'p-prog',flat:'p-flat',none:'p-none'};
 const pill=e=>`<span class="pill ${pillCls[e.k]}">${esc(e.label)}</span>`;
@@ -440,7 +459,7 @@ function goalHtml(it,last,ev){
   if(!last)return `<div class="hint goal"><b>Primera vez:</b> busca un peso que te deje en ${range} reps con RIR 1–2.</div>`;
   const kg=last.top>0?`${fk(last.top)} kg`:'sin lastre';
   if(ev.k==='up')return `<div class="hint up"><b>Hoy sube peso:</b> prueba ${fk(last.top+2.5)} kg (o el siguiente escalón) y busca ${it.tSets??last.sets.length} × ${it.rmin??8}. La última vez llegaste al tope de reps en todas las series.</div>`;
-  if(ev.k==='stall')return `<div class="hint stall"><b>Estancado:</b> hoy bate ${last.repsSum} reps en total con ${kg}, o sube peso aunque hagas menos reps.</div>`;
+  if(ev.k==='stall')return `<div class="hint stall"><b>Estancado:</b> hoy bate ${ev.best??last.repsSum} reps en total con ${kg}, o sube peso aunque hagas menos reps.</div>`;
   return `<div class="hint goal"><b>Hoy:</b> ${kg} · supera ${last.repsSum} reps en total (1 rep más en alguna serie).</div>`;
 }
 /* ¿esta serie de hoy mejora la misma serie de la última vez? */
@@ -511,18 +530,20 @@ function viewProgress(){
   const cat=[...catalog().values()].filter(e=>e.type!=='cardio');
   const order={up:0,stall:1,prog:2,flat:3,none:4};
   const q=(ui.q||'').trim()?slug(ui.q).replace(/-/g,' ').trim():'';
-  const rows=cat.map(e=>({e,ev:evaluate(e.id),h:history(e.id)}))
-    .filter(r=>!q||slug(r.e.name).replace(/-/g,' ').includes(q))
+  const all=cat.map(e=>({e,ev:evaluate(e.id),h:history(e.id),g:muscle(e)}));
+  const counts={up:0,stall:0};all.forEach(r=>{if(r.ev.k in counts)counts[r.ev.k]++});
+  const rows=all.filter(r=>(!q||slug(r.e.name).replace(/-/g,' ').includes(q))&&(!ui.pf||r.ev.k===ui.pf))
     .sort((a,b)=>order[a.ev.k]-order[b.ev.k]||a.e.name.localeCompare(b.e.name,'es'));
-  const counts={up:0,stall:0};rows.forEach(r=>{if(r.ev.k in counts)counts[r.ev.k]++});
-  const list=rows.map(({e,ev,h})=>{const L=h[h.length-1];
-    return `<button class="li" data-act="ex" data-v="${esc(e.id)}"><span class="n">${esc(e.name)}</span>${pill(ev)}<span class="d num">${L?`${fmtShort(L.date)} · ${fk(L.top)} kg × ${L.atTop.map(x=>x.reps??'–').join('·')}`:'Sin registros todavía'}</span></button>`}).join('');
+  const li=({e,ev,h})=>{const L=h[h.length-1];
+    return `<button class="li" data-act="ex" data-v="${esc(e.id)}"><span class="n">${esc(e.name)}</span>${pill(ev)}<span class="d num">${L?`${fmtShort(L.date)} · ${fk(L.top)} kg × ${L.atTop.map(x=>x.reps??'–').join('·')}`:'Sin registros todavía'}</span></button>`};
+  const groups=GROUPS.map(([k,name])=>{const rs=rows.filter(r=>r.g===k);if(!rs.length)return '';
+    return `<div class="grp"><span class="lbl">${name}${k==='biceps'||k==='triceps'?' <span class="pri">· tu prioridad</span>':''}</span><span class="lbl num">${rs.length}</span></div><div class="list">${rs.map(li).join('')}</div>`}).join('');
+  const tile=(k,label,n,color)=>`<button class="stat" data-act="pf" data-v="${k}" aria-pressed="${(ui.pf||'')===k}"><span class="lbl">${label}</span><b class="num"${color?` style="color:var(--${color})"`:''}>${n}</b></button>`;
+  const none=ui.pf&&!q?(ui.pf==='up'?'Ningún ejercicio listo para subir peso todavía.':'Ningún ejercicio estancado.'):'No hay ejercicios que coincidan.';
   return `${banner()}<div><div class="lbl">Tus ejercicios</div><h2 class="sec">Progreso</h2></div>
-  <div class="stats"><div class="stat"><span class="lbl">Sube peso</span><b class="num" style="color:var(--up)">${counts.up}</b></div>
-    <div class="stat"><span class="lbl">Estancados</span><b class="num" style="color:var(--stop)">${counts.stall}</b></div>
-    <div class="stat"><span class="lbl">Ejercicios</span><b class="num">${cat.length}</b></div></div>
+  <div class="stats">${tile('up','Sube peso',counts.up,'up')}${tile('stall','Estancados',counts.stall,'stop')}${tile('','Todos',cat.length,'')}</div>
   <input class="field" id="q" data-f="q" value="${esc(ui.q)}" placeholder="Buscar ejercicio" autocomplete="off">
-  ${rows.length?`<div class="list">${list}</div>`:'<div class="empty">No hay ejercicios que coincidan.</div>'}`;
+  ${groups||`<div class="empty">${none}</div>`}`;
 }
 
 function viewExercise(id){
@@ -558,6 +579,7 @@ function viewRoutine(){
         <input class="field num" id="t-${ti}-${ei}-rmin" data-f="tex" data-t="${ti}" data-e="${ei}" data-k="rmin" inputmode="numeric" value="${e.rmin??''}" aria-label="Reps mínimo">
         <input class="field num" id="t-${ti}-${ei}-rmax" data-f="tex" data-t="${ti}" data-e="${ei}" data-k="rmax" inputmode="numeric" value="${e.rmax??''}" aria-label="Reps máximo">`}</div>
       <div class="tplctl"><select class="field" id="t-${ti}-${ei}-type" data-f="ttype" data-t="${ti}" data-e="${ei}" aria-label="Tipo"><option value="w"${e.type!=='cardio'?' selected':''}>Pesas</option><option value="cardio"${e.type==='cardio'?' selected':''}>Cardio</option></select>
+        ${e.type==='cardio'?'':`<select class="field" id="t-${ti}-${ei}-mus" data-f="tmus" data-t="${ti}" data-e="${ei}" aria-label="Grupo muscular">${GROUPS.map(([k,n])=>`<option value="${k}"${muscle(e)===k?' selected':''}>${n}</option>`).join('')}</select>`}
         <span style="flex:1"></span>
         <button class="del" data-act="tmv" data-t="${ti}" data-e="${ei}" data-v="-1" aria-label="Subir">${icons.up}</button>
         <button class="del" data-act="tmv" data-t="${ti}" data-e="${ei}" data-v="1" aria-label="Bajar">${icons.down}</button>
@@ -641,7 +663,8 @@ document.addEventListener('click',ev=>{
   const act=b.dataset.act,v=b.dataset.v,i=+b.dataset.i,j=+b.dataset.j,ti=+b.dataset.t,ei=+b.dataset.e;
   const s=S();let focusId=null;
   switch(act){
-    case 'tab': ui.tab=v;ui.confirm=null;ui.msg=null;location.hash=v;window.scrollTo(0,0);break;
+    case 'pf': ui.pf=(!v||ui.pf===v)?null:v;break;
+    case 'tab': if(v==='progreso'&&ui.tab==='progreso')ui.ex=null;ui.tab=v;ui.confirm=null;ui.msg=null;location.hash=v;window.scrollTo(0,0);break;
     case 'week': ui.week=addDays(ui.week,7*+v);ui.day=addDays(ui.day,7*+v);ui.confirm=null;break;
     case 'gotoday': ui.week=mondayOf(today);ui.day=today;break;
     case 'day': ui.day=v;ui.confirm=null;break;
@@ -726,6 +749,7 @@ document.addEventListener('focusin',ev=>{
 });
 document.addEventListener('change',ev=>{
   const el=ev.target,f=el.dataset&&el.dataset.f;
+  if(f==='tmus'){templates[+el.dataset.t].exercises[+el.dataset.e].muscle=el.value;saveTpl();render()}
   if(f==='ttype'){templates[+el.dataset.t].exercises[+el.dataset.e].type=el.value;saveTpl();render()}
   if(f==='bdate'&&el.value){ui.bDate=el.value;render()}
   if(f==='import'&&el.files&&el.files[0])importData(el.files[0]);
