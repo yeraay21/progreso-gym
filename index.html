@@ -136,6 +136,11 @@ textarea.field{height:auto;min-height:44px;padding:10px;font-size:16px;resize:ve
 .p-none{background:var(--surface2);color:var(--muted)} .p-cali{background:var(--cali-soft);color:var(--cali)}
 .hint{font-size:13px;border-radius:8px;padding:6px 8px}
 .hint.up{background:var(--up-soft);color:var(--up)} .hint.stall{background:var(--stop-soft);color:var(--stop)}
+.hint.goal{background:var(--accent-soft);color:var(--fg)} .hint.flat{background:var(--surface2);color:var(--muted)}
+.hint b{font-weight:700}
+.cmp:empty{display:none}
+.setrow.up .sn{color:var(--up)}
+.setrow.up .sn::after{content:"▲";display:block;font-family:var(--body);font-size:9px;line-height:1}
 .adder{background:var(--surface);border:1px dashed var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px}
 .restcard{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
 .empty{background:var(--surface);border:1px dashed var(--line);border-radius:14px;padding:18px;text-align:center;color:var(--muted)}
@@ -271,6 +276,8 @@ function catalog(){
 }
 /* solo cuentan las series con repeticiones: un peso relleno sin reps no es una serie hecha */
 function setsOf(it){return (it.sets||[]).filter(s=>s.reps!=null)}
+/* resumen de unas series hechas: peso máximo, series con ese peso y suma de sus reps */
+function summ(st){const top=Math.max(...st.map(x=>x.kg??0)),atTop=st.filter(x=>(x.kg??0)===top);return {top,atTop,repsSum:atTop.reduce((a,x)=>a+(x.reps||0),0)}}
 function history(id){
   const out=[];
   Object.keys(sessions).sort().forEach(d=>{
@@ -279,9 +286,7 @@ function history(id){
       if(it.id!==id)return;
       if(it.type==='cardio'){const c=it.cardio||{};if(c.min!=null||c.incl!=null||c.kmh!=null)out.push({date:d,cardio:c});return}
       const st=setsOf(it); if(!st.length)return;
-      const top=Math.max(...st.map(x=>x.kg??0));
-      const atTop=st.filter(x=>(x.kg??0)===top);
-      out.push({date:d,sets:st,top,repsSum:atTop.reduce((a,x)=>a+(x.reps||0),0),atTop,tSets:it.tSets,rmax:it.rmax,note:it.note});
+      out.push({date:d,sets:st,...summ(st),tSets:it.tSets,rmax:it.rmax,note:it.note});
     });
   });
   return out;
@@ -429,6 +434,38 @@ function viewDay(d){
     <div class="row">${delBtn}</div></div>`;
 }
 
+/* objetivo de hoy para un ejercicio, a partir de la última vez (last) y su evaluación (ev) */
+function goalHtml(it,last,ev){
+  const range=`${it.rmin??8}${it.rmax&&it.rmax!==it.rmin?'–'+it.rmax:''}`;
+  if(!last)return `<div class="hint goal"><b>Primera vez:</b> busca un peso que te deje en ${range} reps con RIR 1–2.</div>`;
+  const kg=last.top>0?`${fk(last.top)} kg`:'sin lastre';
+  if(ev.k==='up')return `<div class="hint up"><b>Hoy sube peso:</b> prueba ${fk(last.top+2.5)} kg (o el siguiente escalón) y busca ${it.tSets??last.sets.length} × ${it.rmin??8}. La última vez llegaste al tope de reps en todas las series.</div>`;
+  if(ev.k==='stall')return `<div class="hint stall"><b>Estancado:</b> hoy bate ${last.repsSum} reps en total con ${kg}, o sube peso aunque hagas menos reps.</div>`;
+  return `<div class="hint goal"><b>Hoy:</b> ${kg} · supera ${last.repsSum} reps en total (1 rep más en alguna serie).</div>`;
+}
+/* ¿esta serie de hoy mejora la misma serie de la última vez? */
+function better(st,p){if(!p||st.reps==null)return false;const a=st.kg??0,b=p.kg??0;return a>b||(a===b&&st.reps>(p.reps??0))}
+/* balance del ejercicio de hoy frente a la última vez (aparece al completar las series) */
+function cmpHtml(it,last){
+  const st=setsOf(it);if(!st.length)return '';
+  const T=summ(st),need=Math.max(1,it.tSets||1);
+  if(it.rmax&&T.atTop.length>=need&&T.atTop.every(x=>x.reps>=it.rmax))return `<div class="hint up"><b>Tope de reps en todas las series.</b> La próxima vez sube peso.</div>`;
+  if(!last||st.length<Math.min(need,last.sets.length))return '';
+  if(T.top>last.top)return `<div class="hint up">▲ Más peso que la última vez (+${fk(T.top-last.top)} kg).</div>`;
+  if(T.top<last.top)return `<div class="hint flat">Menos peso que la última vez (${fk(last.top)} kg).</div>`;
+  const df=T.repsSum-last.repsSum;
+  if(df>0)return `<div class="hint up">▲ Última vez superada: +${df} ${df===1?'rep':'reps'} con ${fk(T.top)} kg.</div>`;
+  if(df===0)return `<div class="hint flat">Igual que la última vez (${T.repsSum} reps).</div>`;
+  return `<div class="hint flat">${-df} ${df===-1?'rep':'reps'} menos que la última vez.</div>`;
+}
+/* actualiza marcas y balance de un ejercicio mientras se escribe, sin repintar (no corta el teclado) */
+function refreshItem(i){
+  const d=ui.day,it=S().items[i],last=lastBefore(it.id,d);
+  it.sets.forEach((st,j)=>{
+    const r=document.getElementById(`r-${d}-${i}-${j}`);if(r)r.classList.toggle('up',better(st,last&&last.sets[j]));
+    const ok=document.getElementById(`ok-${d}-${i}-${j}`);if(ok)ok.classList.toggle('done',st.reps!=null)});
+  const c=document.getElementById(`cmp-${d}-${i}`);if(c)c.innerHTML=cmpHtml(it,last);
+}
 function itemCard(d,it,i){
   const last=lastBefore(it.id,d);
   const ev=evaluate(it.id,d);
@@ -448,18 +485,19 @@ function itemCard(d,it,i){
   const rir=ui.rir;
   const rows=(it.sets||[]).map((st,j)=>{
     const p=last&&last.sets[j];
-    return `<div class="setrow${rir?' rir':''}"><span class="sn num">${j+1}</span>
+    return `<div class="setrow${rir?' rir':''}${better(st,p)?' up':''}" id="r-${d}-${i}-${j}"><span class="sn num">${j+1}</span>
       <input class="field" id="s-${d}-${i}-${j}-kg" data-f="set" data-i="${i}" data-j="${j}" data-k="kg" inputmode="decimal" enterkeyhint="next" value="${fv(st.kg)}" placeholder="${p&&p.kg!=null?fk(p.kg):'kg'}" aria-label="Serie ${j+1} kilos">
       <input class="field" id="s-${d}-${i}-${j}-reps" data-f="set" data-i="${i}" data-j="${j}" data-k="reps" inputmode="numeric" enterkeyhint="next" value="${st.reps??''}" placeholder="${p&&p.reps!=null?p.reps:'reps'}" aria-label="Serie ${j+1} repeticiones">
       ${rir?`<input class="field" id="s-${d}-${i}-${j}-rir" data-f="set" data-i="${i}" data-j="${j}" data-k="rir" inputmode="decimal" enterkeyhint="next" value="${fv(st.rir)}" placeholder="${p&&p.rir!=null?fk(p.rir):'RIR'}" aria-label="Serie ${j+1} RIR">`:''}
       <button class="ok${st.reps!=null?' done':''}" id="ok-${d}-${i}-${j}" data-act="okset" data-i="${i}" data-j="${j}" aria-label="Serie ${j+1}: repetir lo de la última vez">${icons.check}</button></div>`;
   }).join('');
   const nS=(it.sets||[]).length,popKey=`set:${d}:${i}`;
-  const hint=(ev.k==='up'||ev.k==='stall')&&last?`<div class="hint ${ev.k}">${esc(ev.hint)}</div>`:'';
+  const hint=goalHtml(it,last,ev);
   return `<section class="ex"><div class="exhead"><div class="exname">${esc(it.name)}<small>Objetivo ${esc(target)}</small></div>${ctl}</div>${confirmDel}
     ${last?`<div class="last">Última vez (${fmtShort(last.date)}): <b class="num">${setsTxt(last.sets)}</b></div>`:''}
     ${hint}
     <div class="sets"><div class="setrow${rir?' rir':''} sethead"><span>#</span><span>kg</span><span>reps</span>${rir?'<span>RIR</span>':''}<span></span></div>${rows}</div>
+    <div class="cmp" id="cmp-${d}-${i}">${cmpHtml(it,last)}</div>
     <div class="row"><button class="btn" data-act="addset" data-i="${i}">+ Serie</button>
       ${nS>1?`<button class="btn ghost" data-act="popset" data-i="${i}" aria-label="Quitar la última serie">− Serie</button>`:''}
       ${last?'<span class="small muted">✓ repite la última vez</span>':''}</div>
@@ -657,8 +695,7 @@ document.addEventListener('input',ev=>{
       if(k==='kg')for(let n=j+1;n<st.length;n++){
         if(st[n].reps!=null||(st[n].kg!=null&&st[n].kg!==old))break;
         st[n].kg=v;const o=document.getElementById(`s-${ui.day}-${i}-${n}-kg`);if(o)o.value=el.value}
-      const ok=document.getElementById(`ok-${ui.day}-${i}-${j}`);if(ok)ok.classList.toggle('done',st[j].reps!=null);
-      saveSes(ui.day);break}
+      refreshItem(i);saveSes(ui.day);break}
     case 'cardio': s.items[i].cardio[k]=num(el.value);saveSes(ui.day);break;
     case 'inote': s.items[i].note=el.value;saveSes(ui.day);break;
     case 'snote': s.note=el.value;saveSes(ui.day);break;
