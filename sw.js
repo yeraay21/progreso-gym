@@ -1,7 +1,7 @@
 // Diario de Hierro — service worker
 // Sube el número de VERSION cada vez que cambies algún archivo de la app:
 // así el móvil detecta la versión nueva y muestra el botón "Actualizar".
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE = 'diario-hierro-' + VERSION;
 const FILES = [
   './',
